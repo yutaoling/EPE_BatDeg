@@ -1,0 +1,52 @@
+# ============================================
+# BatteryDegradation 项目依赖
+# 锂电池SOH/RUL预测框架
+# Updated: 2026-01
+# ============================================
+
+# Core Scientific Computing
+numpy>=1.24.0
+scipy>=1.11.0
+pandas>=2.0.0
+
+# Deep Learning
+# 推荐通过conda安装PyTorch以获得CUDA支持:
+# conda install pytorch torchvision pytorch-cuda=12.4 -c pytorch -c nvidia
+torch>=2.5.0
+torchvision>=0.20.0
+
+# Data Processing
+scikit-learn>=1.4.0
+h5py>=3.10.0              # MATR数据集(.mat文件)读取
+
+# Visualization
+matplotlib>=3.8.0
+seaborn>=0.13.0
+
+# Progress Bar
+tqdm>=4.66.0
+
+# Jupyter Notebook
+jupyter>=1.0.0
+jupyterlab>=4.0.0
+ipywidgets>=8.1.0
+
+# Utilities
+pyyaml>=6.0
+
+# Monitoring
+tensorboard>=2.16.0
+
+# ============================================
+# 可选依赖 (根据需要取消注释)
+# ============================================
+
+# Fourier Neural Operator (FNO)
+# neuraloperator>=0.3.0
+
+# Weights & Biases (实验记录)
+# wandb>=0.16.0
+
+# ONNX导出
+# onnx>=1.15.0
+# onnxruntime>=1.17.0
