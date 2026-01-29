@@ -5,7 +5,7 @@ Transformer模型（双头输出：SOH + RUL）
 1. TransformerModel: 标准Transformer编码器
 2. TransformerWithCLS: 带CLS token的Transformer
 
-注意：本项目统一只使用3通道：voltage/current/time
+注意：本项目统一只使用3通道：v_delta/i_delta/q_norm
 """
 
 import torch

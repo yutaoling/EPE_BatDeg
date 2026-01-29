@@ -393,9 +393,9 @@ class ModelManager:
         # 根据input_type确定参数
         if input_type == 'features':
             kwargs = {'input_dim': 16}
-        elif input_type in ['sequence', 'full_sequence']:
+        elif input_type in ['sequence']:
             kwargs = {'in_channels': 4}
-        elif input_type in ['image', 'full_image']:
+        elif input_type in ['image']:
             kwargs = {'in_channels': 4}
         else:
             kwargs = {}

@@ -16,7 +16,7 @@ import torch.nn as nn
 import numpy as np
 from torch.utils.data import DataLoader
 from tqdm import tqdm
-from typing import Dict, Optional
+from typing import Dict, Optional, Any
 from pathlib import Path
 
 
@@ -43,6 +43,10 @@ class BaseModel(nn.Module):
     def to(self, device: str):
         self._device = device
         return super().to(device)
+
+    def _param_device(self) -> torch.device:
+        """始终以模型参数所在 device 为准，避免 self._device 与真实参数 device 不一致。"""
+        return next(self.parameters()).device
 
     @staticmethod
     def _as_pred_dict(pred):
@@ -94,12 +98,14 @@ class BaseModel(nn.Module):
             n_batches = 0
 
             for batch in train_loader:
-                x = batch['feature'].to(self._device)
-                soh = batch['soh'].to(self._device)
-                rul = batch['rul'].to(self._device)
+                dev = self._param_device()
+
+                x = batch['feature'].to(dev)
+                soh = batch['soh'].to(dev)
+                rul = batch['rul'].to(dev)
                 rul_mask = batch.get('rul_mask')
                 if rul_mask is not None:
-                    rul_mask = rul_mask.to(self._device)
+                    rul_mask = rul_mask.to(dev)
 
                 optimizer.zero_grad()
 
@@ -147,7 +153,7 @@ class BaseModel(nn.Module):
 
             if verbose and (epoch + 1) % 10 == 0:
                 msg = f"Epoch {epoch+1}: loss={total_loss:.6f}, soh={total_soh:.6f}, rul={total_rul:.6f}"
-                if val_loader is not None:
+                if val_loader is not None and len(history['val_loss']) > 0:
                     msg += f", val={history['val_loss'][-1]:.6f}"
                 tqdm.write(msg)
 
@@ -171,13 +177,15 @@ class BaseModel(nn.Module):
         total_rul = 0.0
         n_batches = 0
 
+        dev = self._param_device()
+
         for batch in loader:
-            x = batch['feature'].to(self._device)
-            soh = batch['soh'].to(self._device)
-            rul = batch['rul'].to(self._device)
+            x = batch['feature'].to(dev)
+            soh = batch['soh'].to(dev)
+            rul = batch['rul'].to(dev)
             rul_mask = batch.get('rul_mask')
             if rul_mask is not None:
-                rul_mask = rul_mask.to(self._device)
+                rul_mask = rul_mask.to(dev)
 
             pred = self._as_pred_dict(self(x))
             soh_pred = pred['soh'].squeeze()
@@ -210,8 +218,11 @@ class BaseModel(nn.Module):
         self.eval()
         soh_preds = []
         rul_preds = []
+
+        dev = self._param_device()
+
         for batch in loader:
-            x = batch['feature'].to(self._device)
+            x = batch['feature'].to(dev)
             pred = self._as_pred_dict(self(x))
             soh_preds.append(pred['soh'].detach().cpu())
             rul_preds.append(pred['rul'].detach().cpu())
@@ -249,31 +260,54 @@ class BaseModel(nn.Module):
         else:
             mape = float('inf')
 
-        return {'RMSE': rmse, 'MAE': mae, 'MAPE': mape}
+        # R2
+        denom = float(np.sum((y_true - np.mean(y_true)) ** 2))
+        if denom > 0:
+            r2 = 1.0 - float(np.sum((y_true - y_pred) ** 2)) / denom
+        else:
+            r2 = float('nan')
 
-    def evaluate(self, loader: DataLoader) -> Dict[str, float]:
-        """默认评估 SOH 与 RUL 两套指标（RUL只评估有效样本）。"""
+        return {'RMSE': rmse, 'MAE': mae, 'MAPE': mape, 'R2': r2}
+
+    def evaluate_with_predictions(self, loader: DataLoader) -> Dict[str, Any]:
+        """评估并返回样本级预测，用于多指标与可视化。"""
         preds = self.predict(loader)
+
         soh_true = np.concatenate([batch['soh'].numpy() for batch in loader])
         rul_true = np.concatenate([batch['rul'].numpy() for batch in loader])
         rul_mask = np.concatenate([batch.get('rul_mask', torch.ones_like(batch['rul'])).numpy() for batch in loader])
 
-        metrics = {
-            'soh': self.compute_metrics(soh_true, preds['soh']),
+        out: Dict[str, Any] = {
+            'soh_true': soh_true,
+            'soh_pred': preds['soh'],
+            'rul_true': rul_true,
+            'rul_pred': preds['rul'],
+            'rul_mask': rul_mask,
         }
+
+        out['soh_metrics'] = self.compute_metrics(soh_true, preds['soh'])
 
         valid = rul_mask.flatten() > 0.5
         if valid.any():
-            metrics['rul'] = self.compute_metrics(rul_true[valid], preds['rul'][valid])
+            out['rul_metrics'] = self.compute_metrics(rul_true[valid], preds['rul'][valid])
         else:
-            metrics['rul'] = {'RMSE': float('inf'), 'MAE': float('inf'), 'MAPE': float('inf')}
+            out['rul_metrics'] = {'RMSE': float('inf'), 'MAE': float('inf'), 'MAPE': float('inf'), 'R2': float('nan')}
 
-        # 为兼容旧表格输出，拉平一份
+        return out
+
+    def evaluate(self, loader: DataLoader) -> Dict[str, float]:
+        """默认评估 SOH 与 RUL 两套指标（RUL只评估有效样本）。"""
+        out = self.evaluate_with_predictions(loader)
+        soh_m = out['soh_metrics']
+        rul_m = out['rul_metrics']
+
         return {
-            'SOH_RMSE': metrics['soh']['RMSE'],
-            'SOH_MAE': metrics['soh']['MAE'],
-            'SOH_MAPE': metrics['soh']['MAPE'],
-            'RUL_RMSE': metrics['rul']['RMSE'],
-            'RUL_MAE': metrics['rul']['MAE'],
-            'RUL_MAPE': metrics['rul']['MAPE'],
+            'SOH_RMSE': soh_m['RMSE'],
+            'SOH_MAE': soh_m['MAE'],
+            'SOH_MAPE': soh_m['MAPE'],
+            'SOH_R2': soh_m['R2'],
+            'RUL_RMSE': rul_m['RMSE'],
+            'RUL_MAE': rul_m['MAE'],
+            'RUL_MAPE': rul_m['MAPE'],
+            'RUL_R2': rul_m['R2'],
         }

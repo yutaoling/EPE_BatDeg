@@ -5,7 +5,7 @@ CNN模型（双头输出：SOH + RUL）
 1. CNN1D: 用于单循环/固定长度时序输入 (batch, T, C)
 2. CNN2D: 用于热力图输入 (batch, H, W, C)
 
-注意：本项目统一只使用3通道：voltage/current/time
+注意：本项目统一只使用3通道：v_delta/i_delta/q_norm
 """
 
 import torch

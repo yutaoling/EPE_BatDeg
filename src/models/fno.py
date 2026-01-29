@@ -2,7 +2,7 @@
 
 用于学习算子映射，适合捕捉物理系统的动态特性。
 
-注意：本项目统一只使用3通道：voltage/current/time
+注意：本项目统一只使用3通道：v_delta/i_delta/q_norm
 """
 
 import torch

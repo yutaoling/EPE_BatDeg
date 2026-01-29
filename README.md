@@ -4,9 +4,9 @@
 
 ## 统一工作流
 
-- **3通道**：voltage / current / time
+- **3通道**：v_delta / i_delta / q_norm（容量进度轴）
 - **双头输出**：SOH + RUL
-- **主推协议无关**：`full_image`（完整充电曲线热力图）
+- **主推协议无关**：`image`（delta热力图：完整历史→固定尺寸）
 - **训练策略**：随机截断 + 随机EOL阈值（由 `BatteryDataset` 提供）
 - **不使用 early stopping / scheduler**
 
@@ -26,7 +26,6 @@ BatteryDegradation/
 │   ├── data/          # 数据处理模块
 │   ├── models/        # 模型定义
 │   ├── experiments.py # 实验管理
-│   ├── evaluate.py    # 评估工具
 │   └── utils.py       # 工具函数
 ├── results/           # 实验结果
 └── checkpoints/       # 模型检查点
@@ -50,14 +49,18 @@ BatteryDegradation/
 |------|------|----------|------|
 | 统计特征 | MLP, PINN | `features` | 16维统计特征 |
 | 时序 | LSTM, CNN1D, Transformer, FNO | `sequence` | 单循环时序 |
-| 视觉 | CNN2D, ViT | `image`, `full_image` | 多循环热力图 |
+| 视觉 | CNN2D, ViT | `image` | 多循环热力图（完整历史→固定尺寸） |
 
-## 特征提取方法（3通道：V, I, time）
+## 特征与输入（3通道：v_delta, i_delta, q_norm）
 
-1. **`features`** `(16,)` - 16维协议无关统计特征
-2. **`sequence`** `(200, 3)` - 单循环充电曲线（末端窗口）
-3. **`image`** `(100, 200, 3)` - 多循环充电曲线热力图（末端窗口）
-4. **`full_image`** `(100, 200, 3)` - **（主推）** 完整充电曲线热力图
+本项目当前的三类输入均基于同一条主线：
+- 以归一化容量进度轴 `q_norm∈[0,1]` 对齐单循环充电曲线
+- 取每块电池前10个有效循环的均值序列作为 baseline（仅 v/i）
+- 对每个循环做差得到 `v_delta/i_delta`（`q_norm` 不扣除）
+
+1. **`features`** `(16,)` - 从 delta 序列统计得到的16维特征（导数为 `dv/dq`、`di/dq`）
+2. **`sequence`** `(200, 3)` - 单循环 delta 序列 `[v_delta, i_delta, q_norm]`
+3. **`image`** `(100, 200, 3)` - **（主推）** delta 热力图（历史0→当前，循环轴插值到固定 window_size）
 
 ## 快速开始
 
@@ -82,18 +85,17 @@ jupyter lab notebooks/
 03_cross_domain_transfer.ipynb # (核心) 跨数据集训练与评估
 ```
 
-## RUL预测（基于SOH轨迹外推）
+## RUL 标签与训练方式（主线）
 
-```python
-from src.evaluate import RULPredictor, plot_rul_prediction
+本项目当前的 RUL 不是通过“SOH 轨迹外推器”单独计算，而是在 `BatteryDataset` 中按训练策略动态生成：
 
-predictor = RULPredictor(threshold=0.8)
-result = predictor.predict_from_soh_array(
-    soh_array=battery.get_soh_array(),
-    current_cycle=500
-)
-print(f"预测RUL: {result.predicted_rul} 循环")
-```
+- 训练时可启用 `random_truncate=True`：随机选择预测点（cycle_idx），使用从循环0到当前循环的历史输入。
+- 训练时可启用 `random_eol_threshold=True`：对每个样本随机采样 RUL 阈值（SOH threshold），并计算从当前循环到首次低于该阈值的剩余循环数作为 RUL 标签。
+- 阈值约束：阈值被限制在 `[0.65, 0.9]`，同时不低于电池最小 SOH、不高于当前 SOH（带 margin）。
+
+建议通过 `src.experiments.ExperimentConfig` 直接训练：
+- `target_type='rul'`（只做RUL）或 `target_type='both'`（SOH+RUL 双头）
+- `input_type='image'`（完整历史热力图，输出尺寸恒定）
 
 ## 依赖
 

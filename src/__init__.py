@@ -4,8 +4,6 @@
 # 基础数据类（不依赖torch）
 from .data.battery_data import BatteryData, CycleData
 
-# RUL预测器（不依赖torch）
-from .evaluate import RULPredictor, RULPredictionResult, plot_rul_prediction
 
 # 延迟导入需要torch的模块
 def _lazy_import():
@@ -17,6 +15,5 @@ def _lazy_import():
 __version__ = '0.1.0'
 __all__ = [
     'BatteryData', 'CycleData', 
-    'RULPredictor', 'RULPredictionResult', 'plot_rul_prediction',
-    'data', 'models', 'evaluate', 'train', 'experiments'
+    'data', 'models', 'train', 'experiments'
 ]

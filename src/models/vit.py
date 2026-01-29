@@ -2,7 +2,7 @@
 
 用于热力图输入
 
-注意：本项目统一只使用3通道：voltage/current/time
+注意：本项目统一只使用3通道：v_delta/i_delta/q_norm
 """
 
 import torch
@@ -44,6 +44,12 @@ class PatchEmbedding(nn.Module):
 class MultiHeadAttention(nn.Module):
     def __init__(self, embed_dim: int, num_heads: int, dropout: float = 0.0):
         super().__init__()
+        if embed_dim % num_heads != 0:
+            raise ValueError(
+                f"embed_dim({embed_dim}) must be divisible by num_heads({num_heads}). "
+                f"Please change num_heads (e.g. 4/8) or embed_dim."
+            )
+
         self.num_heads = num_heads
         self.head_dim = embed_dim // num_heads
         self.scale = self.head_dim ** -0.5
@@ -55,7 +61,11 @@ class MultiHeadAttention(nn.Module):
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         B, N, C = x.shape
-        qkv = self.qkv(x).reshape(B, N, 3, self.num_heads, self.head_dim).permute(2, 0, 3, 1, 4)
+        qkv = (
+            self.qkv(x)
+            .reshape(B, N, 3, self.num_heads, self.head_dim)
+            .permute(2, 0, 3, 1, 4)
+        )
         q, k, v = qkv[0], qkv[1], qkv[2]
 
         attn = (q @ k.transpose(-2, -1)) * self.scale
@@ -104,7 +114,7 @@ class ViT(BaseModel):
         patch_height: int = 10,
         patch_width: int = 20,
         embed_dim: int = 128,
-        num_heads: int = 3,
+        num_heads: int = 4,
         num_layers: int = 4,
         mlp_ratio: float = 4.0,
         dropout: float = 0.1,
@@ -192,6 +202,11 @@ class SimpleViT(BaseModel):
         dropout: float = 0.1,
     ):
         super().__init__()
+
+        if embed_dim % num_heads != 0:
+            raise ValueError(
+                f"embed_dim({embed_dim}) must be divisible by num_heads({num_heads})."
+            )
 
         self.patch_embed = PatchEmbedding(
             img_height,
